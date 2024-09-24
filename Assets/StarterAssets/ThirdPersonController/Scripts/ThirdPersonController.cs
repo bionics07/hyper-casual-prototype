@@ -1,4 +1,5 @@
-﻿ using UnityEngine;
+﻿ using Assets.Assets.Scripts.Character;
+ using UnityEngine;
 #if ENABLE_INPUT_SYSTEM 
 using UnityEngine.InputSystem;
 #endif
@@ -33,6 +34,9 @@ namespace StarterAssets
         [Range(0, 1)] public float FootstepAudioVolume = 0.5f;
 
         [Space(10)]
+        
+        public bool IsJumpEnabled = true;
+
         [Tooltip("The height the player can jump")]
         public float JumpHeight = 1.2f;
 
@@ -75,6 +79,10 @@ namespace StarterAssets
         [Tooltip("For locking the camera position on all axis")]
         public bool LockCameraPosition = false;
 
+        [Header("GroundCheck")]
+        [SerializeField] private float m_groundCheckerDistance;
+        [SerializeField] private LayerMask m_layerMask;
+
         // cinemachine
         private float _cinemachineTargetYaw;
         private float _cinemachineTargetPitch;
@@ -97,6 +105,9 @@ namespace StarterAssets
         private int _animIDJump;
         private int _animIDFreeFall;
         private int _animIDMotionSpeed;
+
+        //groud checker
+        private GroundCheckerHelper _groundCheckerHelper;
 
 #if ENABLE_INPUT_SYSTEM 
         private PlayerInput _playerInput;
@@ -135,7 +146,8 @@ namespace StarterAssets
         private void Start()
         {
             _cinemachineTargetYaw = CinemachineCameraTarget.transform.rotation.eulerAngles.y;
-            
+
+            _groundCheckerHelper = new GroundCheckerHelper(this, m_groundCheckerDistance, m_layerMask);
             _hasAnimator = TryGetComponent(out _animator);
             _controller = GetComponent<CharacterController>();
             _input = GetComponent<StarterAssetsInputs>();
@@ -265,11 +277,18 @@ namespace StarterAssets
             }
 
 
+            //TODO: Criar logica para checar ground e evitar que personagem caia.
+
             Vector3 targetDirection = Quaternion.Euler(0.0f, _targetRotation, 0.0f) * Vector3.forward;
 
-            // move the player
-            _controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) +
-                             new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+            bool isGoingToHitGround = _groundCheckerHelper.IsGoingToHitGroundNow(targetDirection);
+
+            if (isGoingToHitGround)
+            {
+                // move the player
+                _controller.Move(targetDirection.normalized * (_speed * Time.deltaTime) +
+                                 new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+            }
 
             // update animator if using character
             if (_hasAnimator)
@@ -300,7 +319,7 @@ namespace StarterAssets
                 }
 
                 // Jump
-                if (_input.jump && _jumpTimeoutDelta <= 0.0f)
+                if (IsJumpEnabled && _input.jump && _jumpTimeoutDelta <= 0.0f)
                 {
                     // the square root of H * -2 * G = how much velocity needed to reach desired height
                     _verticalVelocity = Mathf.Sqrt(JumpHeight * -2f * Gravity);
@@ -367,6 +386,16 @@ namespace StarterAssets
             Gizmos.DrawSphere(
                 new Vector3(transform.position.x, transform.position.y - GroundedOffset, transform.position.z),
                 GroundedRadius);
+        }
+
+        private void OnDrawGizmos()
+        {   
+            #if UNITY_EDITOR
+            if (UnityEditor.EditorApplication.isPlaying && _input.move != Vector2.zero)
+            {
+                _groundCheckerHelper.DrawGizmos();
+            } 
+            #endif
         }
 
         private void OnFootstep(AnimationEvent animationEvent)
